@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>DdddOcr API 调用示例 (JavaScript - JSON/Base64)</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; line-height: 1.6; }
+        h2 { border-bottom: 1px solid #ccc; padding-bottom: 10px; }
+        .container { max-width: 800px; margin: auto; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input[type="file"], input[type="text"], select, button {
+            padding: 8px;
+            margin-top: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button { background-color: #007bff; color: white; cursor: pointer; }
+        button:hover { background-color: #0056b3; }
+        pre { background-color: #f4f4f4; padding: 15px; border-radius: 4px; overflow-x: auto; }
+        .note { font-size: 0.9em; color: #555; margin-top: 10px;}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>DdddOcr API 调用示例 (JavaScript - JSON/Base64)</h1>
+        <p class="note">请确保 DdddOcr HTTP 服务正在运行 (默认地址: <code>http://localhost:5000</code>)。<br>
+        现在所有请求都使用 <code>application/json</code> 类型，图片数据会通过 Base64 编码后发送。
+        </p>
+
+        <!-- OCR 识别示例 -->
+        <h2>1. 基础 OCR 识别 (`/ocr/classification`)</h2>
+        <div class="form-group">
+            <label for="ocrImage">选择图片文件进行 OCR:</label>
+            <input type="file" id="ocrImage" accept="image/*">
+        </div>
+        <div class="form-group">
+            <label for="ocrBeta">使用 Beta 模型:</label>
+            <select id="ocrBeta">
+                <option value="false" selected>否 (默认)</option>
+                <option value="true">是</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="ocrPngFix">PNG 透明背景修复:</label>
+            <select id="ocrPngFix">
+                <option value="false" selected>否 (默认)</option>
+                <option value="true">是</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="ocrProbability">返回概率信息:</label>
+            <select id="ocrProbability">
+                <option value="false" selected>否 (默认)</option>
+                <option value="true">是</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="ocrRanges">指定字符集 (可选, 例如 "0123456789" 或 0):</label>
+            <input type="text" id="ocrRanges" placeholder="例如: 0123456789 或 0">
+        </div>
+        <button onclick="callOcrClassification()">发送 OCR 请求</button>
+        <h3>OCR 结果:</h3>
+        <pre id="ocrResult">这里将显示 OCR 结果...</pre>
+
+        <!-- 目标检测示例 -->
+        <h2>2. 目标检测 (`/ocr/detection`)</h2>
+        <div class="form-group">
+            <label for="detImage">选择图片文件进行目标检测:</label>
+            <input type="file" id="detImage" accept="image/*">
+        </div>
+        <button onclick="callOcrDetection()">发送目标检测请求</button>
+        <h3>目标检测结果:</h3>
+        <pre id="detResult">这里将显示目标检测结果...</pre>
+
+        <!-- 滑块检测 (算法1) 示例 -->
+        <h2>3. 滑块检测 - 算法1 (`/ocr/slide_match`)</h2>
+        <div class="form-group">
+            <label for="slideMatchTarget">选择滑块图片 (target_image):</label>
+            <input type="file" id="slideMatchTarget" accept="image/*">
+        </div>
+        <div class="form-group">
+            <label for="slideMatchBg">选择背景图片 (background_image):</label>
+            <input type="file" id="slideMatchBg" accept="image/*">
+        </div>
+        <div class="form-group">
+            <label for="slideMatchSimpleTarget">简单目标 (simple_target):</label>
+            <select id="slideMatchSimpleTarget">
+                <option value="false" selected>否 (默认)</option>
+                <option value="true">是</option>
+            </select>
+        </div>
+        <button onclick="callSlideMatch()">发送滑块匹配请求</button>
+        <h3>滑块匹配结果:</h3>
+        <pre id="slideMatchResult">这里将显示滑块匹配结果...</pre>
+
+        <!-- 滑块检测 (算法2) 示例 -->
+        <h2>4. 滑块检测 - 算法2 (`/ocr/slide_comparison`)</h2>
+        <div class="form-group">
+            <label for="slideCompGap">选择带坑位图 (image_with_gap):</label>
+            <input type="file" id="slideCompGap" accept="image/*">
+        </div>
+        <div class="form-group">
+            <label for="slideCompFullBg">选择完整背景图 (full_background_image):</label>
+            <input type="file" id="slideCompFullBg" accept="image/*">
+        </div>
+        <button onclick="callSlideComparison()">发送滑块比较请求</button>
+        <h3>滑块比较结果:</h3>
+        <pre id="slideCompResult">这里将显示滑块比较结果...</pre>
+    </div>
+
+    <script>
+        // API 服务的基础 URL
+        let baseUrl = 'http://localhost:5000'; // 如果部署在不同地址，请修改这里
+
+        // 辅助函数：将文件转为 Base64 编码的字符串
+        function fileToBase64(file) {
+            return new Promise((resolve, reject) => {
+                let reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = () => resolve(reader.result.split(',')[1]); // 去掉前缀 "data:...;base64,"
+                reader.onerror = error => reject(error);
+            });
+        }
+
+        // 辅助函数：用于显示结果或错误
+        function displayResult(elementId, data) {
+            document.getElementById(elementId).textContent = JSON.stringify(data, null, 2);
+        }
+
+        // 1. 调用 OCR 识别接口 (JSON/Base64)
+        async function callOcrClassification() {
+            let imageInput = document.getElementById('ocrImage');
+            if (!imageInput.files || imageInput.files.length === 0) {
+                alert('请选择一个图片文件进行 OCR!');
+                return;
+            }
+
+            try {
+                let imageBase64 = await fileToBase64(imageInput.files[0]);
+                let payload = {
+                    image_base64: imageBase64,
+                    beta: document.getElementById('ocrBeta').value === 'true',
+                    png_fix: document.getElementById('ocrPngFix').value === 'true',
+                    probability: document.getElementById('ocrProbability').value === 'true'
+                };
+                
+                let rangesStr = document.getElementById('ocrRanges').value;
+                if (rangesStr) {
+                    // 尝试转换为数字，如果失败则作为字符串
+                    payload.ranges = isNaN(parseInt(rangesStr)) ? rangesStr : parseInt(rangesStr);
+                }
+
+                let response = await fetch(`${baseUrl}/ocr/classification`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+                let data = await response.json();
+                displayResult('ocrResult', data);
+            } catch (error) {
+                console.error('OCR Classification Error:', error);
+                displayResult('ocrResult', { error: error.message });
+            }
+        }
+
+        // 2. 调用目标检测接口 (JSON/Base64)
+        async function callOcrDetection() {
+            let imageInput = document.getElementById('detImage');
+            if (!imageInput.files || imageInput.files.length === 0) {
+                alert('请选择一个图片文件进行目标检测!');
+                return;
+            }
+
+            try {
+                let imageBase64 = await fileToBase64(imageInput.files[0]);
+                let payload = { image_base64: imageBase64 };
+
+                let response = await fetch(`${baseUrl}/ocr/detection`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+                let data = await response.json();
+                displayResult('detResult', data);
+            } catch (error) {
+                console.error('OCR Detection Error:', error);
+                displayResult('detResult', { error: error.message });
+            }
+        }
+
+        // 3. 调用滑块检测 (算法1) (JSON/Base64)
+        async function callSlideMatch() {
+            let targetInput = document.getElementById('slideMatchTarget');
+            let bgInput = document.getElementById('slideMatchBg');
+
+            if (!targetInput.files || targetInput.files.length === 0) {
+                alert('请选择滑块图片!');
+                return;
+            }
+            if (!bgInput.files || bgInput.files.length === 0) {
+                alert('请选择背景图片!');
+                return;
+            }
+
+            try {
+                let targetBase64 = await fileToBase64(targetInput.files[0]);
+                let bgBase64 = await fileToBase64(bgInput.files[0]);
+                
+                let payload = {
+                    target_image_base64: targetBase64,
+                    background_image_base64: bgBase64,
+                    simple_target: document.getElementById('slideMatchSimpleTarget').value === 'true'
+                };
+
+                let response = await fetch(`${baseUrl}/ocr/slide_match`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+                let data = await response.json();
+                displayResult('slideMatchResult', data);
+            } catch (error) {
+                console.error('Slide Match Error:', error);
+                displayResult('slideMatchResult', { error: error.message });
+            }
+        }
+
+        // 4. 调用滑块检测 (算法2) (JSON/Base64)
+        async function callSlideComparison() {
+            let gapInput = document.getElementById('slideCompGap');
+            let fullBgInput = document.getElementById('slideCompFullBg');
+
+            if (!gapInput.files || gapInput.files.length === 0) {
+                alert('请选择带坑位图!');
+                return;
+            }
+            if (!fullBgInput.files || fullBgInput.files.length === 0) {
+                alert('请选择完整背景图!');
+                return;
+            }
+
+            try {
+                let gapBase64 = await fileToBase64(gapInput.files[0]);
+                let fullBgBase64 = await fileToBase64(fullBgInput.files[0]);
+
+                let payload = {
+                    image_with_gap_base64: gapBase64,
+                    full_background_image_base64: fullBgBase64
+                };
+
+                let response = await fetch(`${baseUrl}/ocr/slide_comparison`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+                let data = await response.json();
+                displayResult('slideCompResult', data);
+            } catch (error) {
+                console.error('Slide Comparison Error:', error);
+                displayResult('slideCompResult', { error: error.message });
+            }
+        }
+
+        /*
+        --- Node.js 调用示例 (使用 node-fetch 或 axios, JSON/Base64) ---
+        
+        // 需要安装: npm install node-fetch
+        // const fetch = require('node-fetch'); // For CommonJS
+        // import fetch from 'node-fetch'; // For ESM (add "type": "module" to package.json)
+        const fs = require('fs').promises; // 使用 promise版本的 fs
+
+        async function imageFileToBase64(filePath) {
+            try {
+                let fileBuffer = await fs.readFile(filePath);
+                return fileBuffer.toString('base64');
+            } catch (error) {
+                console.error("Error reading file for Base64 conversion:", error);
+                throw error;
+            }
+        }
+
+        // 1. OCR 识别 (Node.js - JSON/Base64)
+        async function ocrInNodeJson(imagePath, useBeta = false, usePngFix = false, getProbability = false, customRanges = null) {
+            try {
+                let imageBase64 = await imageFileToBase64(imagePath);
+                let payload = {
+                    image_base64: imageBase64,
+                    beta: useBeta,
+                    png_fix: usePngFix,
+                    probability: getProbability
+                };
+                if (customRanges !== null) {
+                    payload.ranges = customRanges; // API.md 指出可以是字符串或整数
+                }
+
+                // 假设 fetch 已经正确导入或定义
+                // const fetch = (await import('node-fetch')).default; // 如果在 ESM 模块顶部
+
+                let response = await fetch('http://localhost:5000/ocr/classification', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                let result = await response.json();
+                console.log('Node OCR Result (JSON):', result);
+                return result;
+            } catch (error) {
+                console.error('Node OCR Error (JSON):', error);
+            }
+        }
+
+        // 调用示例:
+        // (async () => {
+        //     // 确保你有 fetch 可用，例如通过: const fetch = (await import('node-fetch')).default;
+        //     await ocrInNodeJson('./path/to/your/captcha.png', false, false, true, "0123456789");
+        //     await ocrInNodeJson('./path/to/your/captcha2.jpg');
+        // })();
+
+        // 2. 目标检测 (Node.js - JSON/Base64)
+        async function detectionInNodeJson(imagePath) {
+            try {
+                let imageBase64 = await imageFileToBase64(imagePath);
+                let payload = { image_base64: imageBase64 };
+                let response = await fetch('http://localhost:5000/ocr/detection', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                let result = await response.json();
+                console.log('Node Detection Result (JSON):', result);
+                return result;
+            } catch (error) {
+                console.error('Node Detection Error (JSON):', error);
+            }
+        }
+        // detectionInNodeJson('./path/to/detection_image.jpg');
+
+        // 3. 滑块检测 - 算法1 (Node.js - JSON/Base64)
+        async function slideMatchInNodeJson(targetImagePath, backgroundImagePath, useSimpleTarget = false) {
+            try {
+                let targetBase64 = await imageFileToBase64(targetImagePath);
+                let backgroundBase64 = await imageFileToBase64(backgroundImagePath);
+                let payload = {
+                    target_image_base64: targetBase64,
+                    background_image_base64: backgroundBase64,
+                    simple_target: useSimpleTarget
+                };
+                let response = await fetch('http://localhost:5000/ocr/slide_match', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                let result = await response.json();
+                console.log('Node Slide Match Result (JSON):', result);
+                return result;
+            } catch (error) {
+                console.error('Node Slide Match Error (JSON):', error);
+            }
+        }
+        // slideMatchInNodeJson('./path/to/target.png', './path/to/background.png');
+
+        // 4. 滑块检测 - 算法2 (Node.js - JSON/Base64)
+        async function slideComparisonInNodeJson(imageWithGapPath, fullBackgroundImagePath) {
+            try {
+                let imageWithGapBase64 = await imageFileToBase64(imageWithGapPath);
+                let fullBackgroundImageBase64 = await imageFileToBase64(fullBackgroundImagePath);
+                let payload = {
+                    image_with_gap_base64: imageWithGapBase64,
+                    full_background_image_base64: fullBackgroundImageBase64
+                };
+                let response = await fetch('http://localhost:5000/ocr/slide_comparison', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                let result = await response.json();
+                console.log('Node Slide Comparison Result (JSON):', result);
+                return result;
+            } catch (error) {
+                console.error('Node Slide Comparison Error (JSON):', error);
+            }
+        }
+        // slideComparisonInNodeJson('./path/to/image_with_gap.jpg', './path/to/full_background.jpg');
+
+        */
+    </script>
+</body>
+</html> 

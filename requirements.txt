@@ -1,0 +1,3 @@
+Flask>=2.0.0
+ddddocr>=1.4.0 # 请根据实际使用的 ddddocr 版本调整，建议使用最新稳定版
+gunicorn>=20.0.0 
