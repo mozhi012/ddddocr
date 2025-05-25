@@ -1,0 +1,42 @@
+name: 构建并推送 Docker 镜像到 GHCR # 工作流程的名称
+
+# 定义工作流程的触发条件
+on:
+  push: # 当有代码推送到仓库时触发
+    branches:
+      - main # 特指 main 分支，如果您的主分支是 master，请修改此处
+
+jobs: # 定义工作流程中的任务
+  build_and_push_to_ghcr: # 任务 ID
+    name: 构建并推送到 GHCR # 任务的描述性名称
+    runs-on: ubuntu-latest # 指定任务运行的环境为最新的 Ubuntu
+
+    steps: # 任务中的步骤
+      - name: 检出代码 # 步骤1：检出仓库代码
+        uses: actions/checkout@v4 # 使用官方的 checkout action
+
+      - name: 登录到 GitHub Container Registry # 步骤2：登录到 GHCR
+        uses: docker/login-action@v3 # 使用官方的 docker login action
+        with:
+          registry: ghcr.io # 指定要登录的 Docker 仓库地址
+          username: ${{ github.repository_owner }} # 使用仓库所有者作为用户名 (例如：mozhi012)
+          password: ${{ secrets.GITHUB_TOKEN }} # 使用 GitHub Actions 自动提供的 GITHUB_TOKEN 作为密码
+
+      - name: 从元数据中提取 Docker 镜像标签和名称 # 步骤3：准备 Docker 镜像的元数据
+        id: meta # 给这个步骤一个 ID，方便后续引用其输出
+        uses: docker/metadata-action@v5 # 使用官方的 metadata action
+        with:
+          images: ghcr.io/${{ github.repository }} # 设定镜像名称格式 (例如：ghcr.io/mozhi012/ddddocr)
+          # tags: | # 定义如何生成标签
+          #   type=sha,prefix=,suffix=,format=short # 使用短SHA作为标签
+          #   type=raw,value=latest,enable={{is_default_branch}} # 如果是默认分支，则打上 latest 标签
+
+      - name: 构建并推送到 GitHub Container Registry # 步骤4：构建 Docker 镜像并推送到 GHCR
+        uses: docker/build-push-action@v5 # 使用官方的 build-push action
+        with:
+          context: . # Dockerfile 的上下文路径，. 表示当前仓库根目录
+          push: true # 构建完成后推送到远端仓库
+          tags: ${{ steps.meta.outputs.tags }} # 使用上一步骤生成的标签 (例如: ghcr.io/mozhi012/ddddocr:latest, ghcr.io/mozhi012/ddddocr:abcdef1)
+          labels: ${{ steps.meta.outputs.labels }} # 使用上一步骤生成的标签
+          # cache-from: type=gha # 尝试从 GitHub Actions 缓存中加载层
+          # cache-to: type=gha,mode=max # 将构建缓存保存到 GitHub Actions，mode=max 表示尽可能多地缓存 
