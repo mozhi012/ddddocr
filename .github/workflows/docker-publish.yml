@@ -19,8 +19,8 @@ jobs: # 定义工作流程中的任务
         uses: docker/login-action@v3 # 使用官方的 docker login action
         with:
           registry: ghcr.io # 指定要登录的 Docker 仓库地址
-          username: ${{ github.repository_owner }} # 使用仓库所有者作为用户名 (例如：mozhi012)
-          password: ${{ secrets.GITHUB_TOKEN }} # 使用 GitHub Actions 自动提供的 GITHUB_TOKEN 作为密码
+          username: ${{ github.actor }} # 使用触发工作流的用户名
+          password: ${{ secrets.GHCR_PAT }} # 使用您创建的 PAT 密钥
 
       - name: 从元数据中提取 Docker 镜像标签和名称 # 步骤3：准备 Docker 镜像的元数据
         id: meta # 给这个步骤一个 ID，方便后续引用其输出
